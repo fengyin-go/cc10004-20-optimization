@@ -47,6 +47,7 @@
             >
               {{ action }}
             </button>
+            <button class="link" type="button" @click="openRevise(row)">修订规则</button>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -54,6 +55,21 @@
         </tr>
       </tbody>
     </table>
+
+    <form v-if="reviseTarget" class="revise-bar" @submit.prevent="submitRevise">
+      <strong>修订 {{ reviseTarget["规则编号"] }}（当前版本 v{{ reviseTarget.version ?? 1 }}）</strong>
+      <label class="filter-item">
+        <span>比较值</span>
+        <input v-model="reviseDraft['比较值']" placeholder="比较值" />
+      </label>
+      <label class="filter-item">
+        <span>组合表达式</span>
+        <input v-model="reviseDraft['组合表达式']" placeholder="如 amount >= 100 AND status = 'paid'" />
+      </label>
+      <button class="btn primary" type="submit">提交修订</button>
+      <button class="btn ghost" type="button" @click="cancelRevise">取消</button>
+      <span class="error-text">{{ reviseMessage }}</span>
+    </form>
 
     <footer class="page-foot">
       <span>共 {{ total }} 条数据筛选记录</span>
@@ -76,6 +92,9 @@ const statuses = ["草稿", "待校验", "已启用", "已停用"]
 const stats = [{"label": "筛选规则总数", "value": 0}, {"label": "已启用规则", "value": 0}, {"label": "待校验规则", "value": 0}]
 
 const rows = ref<Row[]>([])
+const reviseTarget = ref<Row | null>(null)
+const reviseDraft = ref<Record<string, string>>({})
+const reviseMessage = ref('')
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
@@ -92,6 +111,41 @@ function exportRows() {
 
 function openCreate() {
   errorMessage.value = '筛选规则登记入口尚未接入审批流'
+}
+
+function openRevise(row: Row) {
+  reviseTarget.value = row
+  reviseDraft.value = {
+    '比较值': String(row['比较值'] ?? ''),
+    '组合表达式': String(row['组合表达式'] ?? ''),
+  }
+  reviseMessage.value = ''
+}
+
+function cancelRevise() {
+  reviseTarget.value = null
+  reviseDraft.value = {}
+  reviseMessage.value = ''
+}
+
+async function submitRevise() {
+  if (!reviseTarget.value) return
+  reviseMessage.value = ''
+  try {
+    const response = await request(`${ENDPOINT}/${reviseTarget.value.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ values: reviseDraft.value }),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload?.ok) {
+      reviseMessage.value = payload?.message ?? '规则修订未生效'
+      return
+    }
+    reviseTarget.value = null
+    await reload()
+  } catch (error) {
+    reviseMessage.value = error instanceof Error ? error.message : '规则修订失败'
+  }
 }
 
 async function runAction(action: string, row: Row) {

@@ -58,6 +58,15 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     return ActionResult(ok=True, message=message, entry=entry)
 
 
+@router.patch("/{entry_id}", response_model=ActionResult)
+def update_entry(entry_id: int, payload: EntryPayload) -> ActionResult:
+    """修订规则字段：每次修订都会递增版本，并让进行中的反查快照失效。"""
+    entry, message = service.update_entry(entry_id, payload.values)
+    if entry is None:
+        return ActionResult(ok=False, message=message)
+    return ActionResult(ok=True, message=message, entry=entry)
+
+
 @router.get("/export")
 def export_entries() -> dict[str, Any]:
     """导出数据筛选清单：返回当前过滤条件下的全量数据。"""

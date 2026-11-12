@@ -3,10 +3,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.rule_versions import stamp_rule
 from app.store import store
 
 MODULE = "aggregate"
 REQUIRED_FIELDS = ["方案编号", "聚合函数", "目标字段"]
+FIELD_NAME_ID_PAIRS = [("目标字段", "目标字段标识")]
+EDITABLE_FIELDS = ["目标数据集", "目标字段", "目标字段标识", "聚合函数", "分组维度", "时间窗口", "筛选条件", "输出精度", "缓存时间"]
 STATUS_ORDER = ["草稿", "待校验", "已启用", "已停用"]
 ACTION_RULES = {"提交校验": "待校验", "启用方案": "已启用", "停用方案": "已停用"}
 NEGATIVE_ACTIONS = ["停用方案"]
@@ -43,8 +46,30 @@ class AggregateService:
         entry["status"] = STATUS_ORDER[0]
         entry["pending"] = True
         entry["abnormal"] = False
+        stamp_rule(entry, initial=True)
         rows.append(entry)
         return entry, []
+
+    def update_entry(self, entry_id: int, values: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+        entry = store.find(MODULE, entry_id)
+        if entry is None:
+            return None, f"聚合计算记录 {entry_id} 不存在或已归档"
+        if str(entry.get("status") or "") == STATUS_ORDER[-1]:
+            return None, "已停用的聚合计算规则不能直接修订，请先重新启用"
+        updates = {field: values.get(field) for field in EDITABLE_FIELDS if field in values}
+        for field in REQUIRED_FIELDS:
+            if field in updates and not str(updates[field] or "").strip():
+                return None, f"必填字段「{field}」不能改为空"
+        if not updates:
+            return None, "本次修订没有可更新的字段"
+        # 只改名称、没给新标识时清掉旧标识：不能让一个旧 field_id 继续指向别的字段，
+        # 反查会退回名称唯一映射，命中多个则列入待确认。
+        for name_key, id_key in FIELD_NAME_ID_PAIRS:
+            if name_key in updates and id_key not in updates:
+                updates[id_key] = None
+        entry.update(updates)
+        stamp_rule(entry)
+        return entry, f"规则已修订，当前版本 {entry['version']}"
 
     def run_action(self, entry_id: int, action: str) -> tuple[dict[str, Any] | None, str]:
         entry = store.find(MODULE, entry_id)
@@ -58,4 +83,5 @@ class AggregateService:
         entry["status"] = target
         entry["pending"] = target != STATUS_ORDER[-1]
         entry["abnormal"] = action in NEGATIVE_ACTIONS
+        stamp_rule(entry)
         return entry, f"聚合方案已{action}"

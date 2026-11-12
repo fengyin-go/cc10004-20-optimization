@@ -68,6 +68,34 @@ npm run dev
 | 数据标签 | `tag` | 标签定义 | 标签编号、标签名称、计算表达式 |
 | 数据分享 | `share` | 分享链接 | 链接编号、目标数据集、访问密码 |
 
+## 字段影响反查（数据集管理 → 数据筛选）
+
+数据集管理列表每行的「字段引用」打开字段面板，可以查看某个字段被哪些启用规则引用：
+
+- 直接使用：数据筛选的筛选字段/排序字段、聚合计算的目标字段、数据分片的分片字段；
+- 间接依赖：组合表达式/筛选条件里以完整标识符出现的字段（`amount` 不会命中 `amount_total`）；
+- 同一规则无论表达式有几个分支都只出现一份，关系以“直接使用优先于间接依赖”；
+- 字段身份以 `field_id` 为准，改名后旧名称保留为别名，旧规则按名称仍可定位；
+  同一数据集里名称命中多个字段时不猜测，进入「待确认」。
+
+接口：
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/datastore/{id}/fields` | 字段定义、别名与字段版本 |
+| `PATCH /api/datastore/{id}/fields/{field_id}` | 字段改名（field_id 不变） |
+| `GET /api/datastore/{id}/field-references?field_id=&name=&snapshot_id=&cursor=&size=` | 反查（分页片段，需带首次返回的 snapshot_id） |
+| `POST /api/datastore/{id}/field-references/consume` | 用 `selection_token` 进入交互查询，消费前重新校验规则启用状态与版本 |
+| `PATCH /api/filter/{id}`、`/api/aggregate/{id}`、`/api/segment/{id}` | 修订规则，版本递增并使旧反查快照失效 |
+
+反查一致性：
+
+- 响应里的 `snapshot` 固定了本次反查采用的规则版本（`rule_versions`）；
+- 分页期间规则被修订/启停、字段定义变化，续页返回 409 并给出当前快照，前端必须刷新，不做新旧拼接；
+- 每次点选签发一次性 `selection_token`；消费时校验规则仍为启用状态且版本未变，
+  已停用或已修订的选择返回 `rule_disabled` / `selection_stale`，不会登记交互查询；
+  字段改名不改变 field_id，选择仍有效，登记的新查询会记录来源规则版本与字段版本。
+
 ## 约定
 
 - 每个模块的前端页面在 `frontend/src/views/<模块>/index.vue`，后端接口在

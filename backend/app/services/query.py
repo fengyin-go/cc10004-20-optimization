@@ -7,6 +7,11 @@ from app.store import store
 
 MODULE = "query"
 REQUIRED_FIELDS = ["语句编号", "查询表达式", "目标数据集"]
+# 从筛选/聚合/分片规则消费来的查询要保留依据，便于回溯本次采用规则版本与字段身份。
+OPTIONAL_FIELDS = [
+    "返回字段", "排序条件", "分页大小", "最大行数", "超时秒数",
+    "来源规则编号", "来源规则版本", "来源字段标识", "数据集字段版本",
+]
 STATUS_ORDER = ["草稿", "待执行", "执行中", "已完成", "已超时"]
 ACTION_RULES = {"提交执行": "待执行", "启动查询": "执行中", "终止查询": "已超时", "保存结果": "已完成"}
 NEGATIVE_ACTIONS = []
@@ -40,6 +45,11 @@ class QueryService:
         rows = store.rows(MODULE)
         entry = {"id": max((int(row.get("id", 0)) for row in rows), default=0) + 1}
         entry.update({field: values.get(field) for field in REQUIRED_FIELDS})
+        entry.update({
+            field: values.get(field)
+            for field in OPTIONAL_FIELDS
+            if values.get(field) not in (None, "")
+        })
         entry["status"] = STATUS_ORDER[0]
         entry["pending"] = True
         entry["abnormal"] = False

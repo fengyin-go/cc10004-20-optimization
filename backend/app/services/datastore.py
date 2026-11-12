@@ -3,10 +3,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services import field_registry
 from app.store import store
 
 MODULE = "datastore"
 REQUIRED_FIELDS = ["数据集编号", "数据集名称", "来源表名"]
+# 字段清单不是登记必填，但填了就留下来，字段反查面板才能给出字段身份。
+OPTIONAL_FIELDS = ["字段列表"]
 STATUS_ORDER = ["草稿", "待审核", "已生效", "已废弃"]
 ACTION_RULES = {"提交审核": "待审核", "生效发布": "已生效", "废弃下线": "已废弃"}
 NEGATIVE_ACTIONS = []
@@ -33,6 +36,21 @@ class DatastoreService:
     def get_entry(self, entry_id: int) -> dict[str, Any] | None:
         return store.find(MODULE, entry_id)
 
+    def list_fields(self, entry_id: int) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        row = store.find(MODULE, entry_id)
+        if row is None:
+            return None, []
+        return row, field_registry.ensure_fields(row)
+
+    def rename_field(self, entry_id: int, field_id: str, new_name: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None, str]:
+        row = store.find(MODULE, entry_id)
+        if row is None:
+            return None, None, f"数据集定义 {entry_id} 不存在或已归档"
+        field, message = field_registry.rename_field(row, field_id, new_name)
+        if field is None:
+            return None, None, message
+        return row, field, message
+
     def create_entry(self, values: dict[str, Any]) -> tuple[dict[str, Any] | None, list[str]]:
         missing = [field for field in REQUIRED_FIELDS if not str(values.get(field) or "").strip()]
         if missing:
@@ -40,6 +58,12 @@ class DatastoreService:
         rows = store.rows(MODULE)
         entry = {"id": max((int(row.get("id", 0)) for row in rows), default=0) + 1}
         entry.update({field: values.get(field) for field in REQUIRED_FIELDS})
+        entry.update({
+            field: values.get(field)
+            for field in OPTIONAL_FIELDS
+            if str(values.get(field) or "").strip()
+        })
+        entry["字段版本"] = 0
         entry["status"] = STATUS_ORDER[0]
         entry["pending"] = True
         entry["abnormal"] = False

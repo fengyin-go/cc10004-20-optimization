@@ -28,6 +28,19 @@ class EntryPayload(BaseModel):
     remark: str | None = None
 
 
+class FieldRenamePayload(BaseModel):
+    """字段改名请求：只换展示名，field_id 保持不变。"""
+
+    name: str = Field(min_length=1, max_length=64)
+
+
+class SelectionPayload(BaseModel):
+    """反查面板点选规则后拿到的消费凭据。"""
+
+    selection_token: str = Field(min_length=1)
+    snapshot_id: str | None = None
+
+
 
 class QueryEntry(BaseModel):
     """查询语句明细结构。"""
